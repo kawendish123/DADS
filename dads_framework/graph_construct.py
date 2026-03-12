@@ -118,6 +118,53 @@ def add_graph_edge(graph, vertex_index, input, layer_index, layer,
     return vertex_index,input
 
 
+def get_transmission_latency_list(model, input, bandwidth, net_type="wifi"):
+    """
+    通过 model, input 和 bandwidth 获取每层传输时延的列表
+    """
+    # 1. 初始化速度
+    speed = get_speed(network_type=net_type, bandwidth=bandwidth)
+
+    # 2. 初始化存储容器
+    transmission_latencies = []
+    dict_layer_output = {0: input}  # 记录每一层的输出，用于处理 DAG 结构
+
+    current_input = input
+
+    # 3. 模拟模型推理循环
+    for layer_index, layer in enumerate(model):
+        # 处理 DAG 拓扑：检查当前层是否需要来自非相邻前驱层的输入 [cite: 38-39, 85]
+        if model.has_dag_topology and (layer_index + 1) in model.dag_dict.keys():
+            pre_input_cond = model.dag_dict[layer_index + 1]
+            if isinstance(pre_input_cond, list):
+                current_input = [dict_layer_output[pre_index] for pre_index in pre_input_cond]
+            else:
+                current_input = dict_layer_output[pre_input_cond]
+
+        # 4. 计算当前阶段的传输时延
+        # 注意：这里计算的是将数据传输到该层执行所需的代价
+        transport_size = len(pickle.dumps(current_input))
+        transmission_lat = transport_size / speed
+        transmission_latencies.append(transmission_lat)
+
+        # 5. 执行推理获取输出，更新 input 用于下一层
+        # 使用 torch.no_grad() 避免计算梯度以节省内存
+        with torch.no_grad():
+            # 处理多输入（list）和单输入
+            if isinstance(current_input, list):
+                output = layer(current_input)
+            else:
+                output = layer(current_input)
+
+        # 6. 如果是 DAG 中的关键层，记录输出供后续引用 [cite: 413]
+        if model.has_dag_topology and (layer_index + 1) in model.record_output_list:
+            dict_layer_output[layer_index + 1] = output
+
+        current_input = output  # 更新为下一层的输入
+
+    return transmission_latencies
+
+
 
 def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwidth, net_type="wifi"):
     """
@@ -138,6 +185,8 @@ def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwid
     所以需要自定义新的 get_min_cut_value_for_ResBlock
     所以用户如果有新的DAG结构 （1）完善已有创建结构 （2）iterable api 需要自定义
     """
+    # print(f"测试bandwidth = {bandwidth} MB/s")
+
     graph = nx.DiGraph()
 
     """
@@ -175,7 +224,7 @@ def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwid
     cloud_vertex = "cloud"  # 云端设备节点
     edge_vertex = "edge"  # 边缘设备节点
 
-    print(f"start construct graph for model...")
+    # print(f"start construct graph for model...")
     graph.add_edge(edge_vertex, "v0", capacity=inf)  # 构建模型初始输入v0
     vertex_index = 0  # 构建图的顶点序号
 
@@ -203,6 +252,8 @@ def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwid
     # 主要负责处理出度大于1的顶点
     prepare_for_partition(graph, vertex_index, dict_node_layer)
     return graph, dict_node_layer, dict_layer_input
+
+
 
 
 def get_node_name(input, vertex_index, dict_input_size_node_name):

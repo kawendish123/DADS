@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 
 """
     边缘设备api，用于启动边缘设备，进行前半部分计算后，将中间数据传递给云端设备
-    client 启动指令 python edge_api.py -i 127.0.0.1 -p 9999 -d cpu -t easy_net
+    client 启动指令 python edge_api.py -i 47.96.171.184 -p 9999 -d cpu -t easy_net
     "-t", "--type"          模型种类参数 "alex_net" "vgg_net" "easy_net" "inception" "inception_v2"
     "-i", "--ip"            服务端 ip地址
     "-p", "--port"          服务端 开放端口
@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
     # 开启：带宽监测客户端
     # 如果没有两个设备测试的条件 可以使用下面的方式 将带宽自定义
-    # bandwidth_value = 10  #Mbps
+    # bandwidth_value = 100  #Mbps
     bandwidth_value = multiprocessing.Value('d', 0.0)
     monitor_cli = MonitorClient(ip=ip, bandwidth_value=bandwidth_value)
     monitor_cli.start()
@@ -57,8 +57,8 @@ if __name__ == '__main__':
     x = x.to(device)
 
     # 部署阶段 - 选择优化分层点
-    # upload_bandwidth = bandwidth_value.value  # MBps
-    upload_bandwidth = 10  # MBps 为确保程序正确运行 这里设置为10；实机运行使用上面那行
+    upload_bandwidth = bandwidth_value.value  # MBps
+    # upload_bandwidth = 100 # MBps 为确保程序正确运行 这里设置为10；实机运行使用上面那行
 
     # 使用云边协同的方式进行模拟
     start_client(ip, port, x, model_type, upload_bandwidth, device)

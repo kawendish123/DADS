@@ -36,7 +36,7 @@ class MonitorClient(Process):
 
                 # 直到接收到回应的数据时延 则退出循环
                 latency = net_utils.get_short_data(conn)
-                # print(f"monitor client get latency : {latency} MB/s ")
+                print(f"monitor client get latency : {latency} MB/s ")
                 if latency is not None:
                     self.bandwidth_value.value = latency
                     net_utils.close_conn(conn)

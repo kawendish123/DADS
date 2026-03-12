@@ -1,5 +1,5 @@
 from utils import inference_utils
-from dads_framework.dads import algorithm_DSL, get_partition_points
+from dads_framework.dads import algorithm_DSL, get_partition_points, algorithm_DSH
 from dads_framework.graph_construct import get_layers_latency
 import net.net_utils as net
 
@@ -79,9 +79,14 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device):
     cloud_latency_list = net.get_short_data(conn)  # 接受到云端的时延参数
 
     # 获得图中的割集以及dict_node_layer字典
-    graph_partition_edge, dict_node_layer = algorithm_DSL(model, input_x,
+    # graph_partition_edge, dict_node_layer = algorithm_DSL(model, input_x,
+    #                                                       edge_latency_list, cloud_latency_list,
+    #                                                       bandwidth=upload_bandwidth)
+    graph_partition_edge, dict_node_layer = algorithm_DSH(model, input_x,
                                                           edge_latency_list, cloud_latency_list,
-                                                          bandwidth=upload_bandwidth)
+                                                          bandwidth=1000)
+
+
     # 获得在DNN模型哪层之后划分
     model_partition_edge = get_partition_points(graph_partition_edge, dict_node_layer)
     print(f"partition edges : {model_partition_edge}")
