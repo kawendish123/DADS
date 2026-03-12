@@ -26,7 +26,10 @@ def algorithm_DSL(model, model_input, edge_latency_list, cloud_latency_list, ban
 
     # partition_edge表示图中需要切割的边
     graph_partition_edge = get_min_cut_set(graph, min_cut_value, reachable, non_reachable)
-    return graph_partition_edge,dict_node_layer
+    trans_lats = get_transmission_latency_list(model, model_input, bandwidth, net_type)
+    te, tt, tc = get_physical_latencies(reachable, graph_partition_edge, dict_node_layer,
+                                        edge_latency_list, cloud_latency_list, trans_lats)
+    return graph_partition_edge,dict_node_layer,te, tt, tc
 
 
 def algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
@@ -99,9 +102,40 @@ def algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
     print(f"DSH 搜索完成! 最优 T_max: {t_max_best:.4f}s")
     print(f"最优 alpha: {final_config['alpha']:.4f}, 最优 gamma: {final_config['gamma']:.4f}")
     print(f"最优 partition: {final_config['partition']}")
-    print(f"最优 dict_node_layer: {final_config['dict_node_layer']}")
-    return final_config["partition"], final_config["dict_node_layer"]
+    # print(f"最优 dict_node_layer: {final_config['dict_node_layer']}")
+    return final_config["partition"], final_config["dict_node_layer"],t_max_best
 
+
+def algorithm_DADS(model, model_input, edge_lats, cloud_lats, bandwidth, Q, net_type="wifi"):
+    """
+    DADS 主入口
+    :param Q: Sampling Rate (帧率)，例如 30。1/Q 代表系统要求的单帧最大处理时间上限。
+    """
+    print("\n" + "=" * 50)
+    print(f"🚀 启动 DADS 动态调度 | 当前要求帧率 Q={Q} FPS, 瓶颈上限 {1.0 / Q:.4f}s")
+    print("=" * 50)
+
+    # 1. 首先假设系统处于轻负载，运行 DSL
+    print(">>> 阶段 1：尝试 DSL (追求最低总延迟)...")
+    graph_edges, dict_layer, te, tt, tc = algorithm_DSL(model, model_input, edge_lats, cloud_lats, bandwidth, net_type)
+    current_max_stage = max(te, tt, tc)
+
+    # 2. 检查 DSL 方案是否会导致系统拥堵
+    if current_max_stage > (1.0 / Q):
+        print(f">>> ⚠️ DSL 瓶颈耗时 {current_max_stage:.4f}s > 限制 {1.0 / Q:.4f}s，系统将面临拥堵！")
+        print(">>> 阶段 2：切换至 DSH (追求最大吞吐量)...")
+
+        graph_edges, dict_layer, t_max_dsh = algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
+                                                           net_type)
+
+        # 3. 检查即使是 DSH 是否也无能为力
+        if t_max_dsh > (1.0 / Q):
+            print(
+                f">>> 🚨 严重警告：DSH 最优瓶颈为 {t_max_dsh:.4f}s，依然无法满足 {Q} FPS。建议系统降级帧率 (inform-decrease)！")
+    else:
+        print(f">>> ✅ DSL 方案满足要求 (最大阶段耗时 {current_max_stage:.4f}s)，采用 DSL 策略。")
+
+    return graph_edges, dict_layer
 
 def search_best_weights(model, model_input, alpha_range, gamma_range, delta,
                         edge_lats_orig, cloud_lats_orig, trans_lats_orig,
@@ -116,8 +150,8 @@ def search_best_weights(model, model_input, alpha_range, gamma_range, delta,
     best_round_config = {"alpha": 1.0, "gamma": 1.0, "partition": None, "dict_node_layer": None}
 
     # 双重循环遍历权重空间
-    for a in np.arange(alpha_l, alpha_u + delta, delta):
-        for g in np.arange(gamma_l, gamma_u + delta, delta):
+    for a in np.arange(max(0.01, alpha_l), alpha_u + delta * 0.1, delta):
+        for g in np.arange(max(0.01, gamma_l), gamma_u + delta * 0.1, delta):
 
             # A. 生成加权延迟（用于诱导算法切分）
             w_edge = [lat * a for lat in edge_lats_orig]

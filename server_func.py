@@ -1,5 +1,5 @@
 from utils import inference_utils
-from dads_framework.dads import algorithm_DSL, get_partition_points, algorithm_DSH
+from dads_framework.dads import algorithm_DSL, get_partition_points, algorithm_DSH, algorithm_DADS
 from dads_framework.graph_construct import get_layers_latency
 import net.net_utils as net
 
@@ -56,7 +56,7 @@ def start_server(socket_server, device):
     print("================= DNN Collaborative Inference Finished. ===================")
 
 
-def start_client(ip, port, input_x, model_type, upload_bandwidth, device):
+def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=5):
     """
     启动一个client客户端 向server端发起推理请求
     一般仅在 edge_api.py 中直接调用
@@ -82,9 +82,12 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device):
     # graph_partition_edge, dict_node_layer = algorithm_DSL(model, input_x,
     #                                                       edge_latency_list, cloud_latency_list,
     #                                                       bandwidth=upload_bandwidth)
-    graph_partition_edge, dict_node_layer = algorithm_DSH(model, input_x,
+    # graph_partition_edge, dict_node_layer = algorithm_DSL(model, input_x,
+    #                                                       edge_latency_list, cloud_latency_list,
+    #                                                       bandwidth=0.2)
+    graph_partition_edge, dict_node_layer = algorithm_DADS(model, input_x,
                                                           edge_latency_list, cloud_latency_list,
-                                                          bandwidth=1000)
+                                                          bandwidth=11,Q=Q)
 
 
     # 获得在DNN模型哪层之后划分
