@@ -56,7 +56,7 @@ def start_server(socket_server, device):
     print("================= DNN Collaborative Inference Finished. ===================")
 
 
-def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=5):
+def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=50):
     """
     启动一个client客户端 向server端发起推理请求
     一般仅在 edge_api.py 中直接调用
@@ -74,8 +74,12 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=5):
     conn = net.get_socket_client(ip, port)
 
     # 发送一个数据请求云端的各层推理时延
+
+
     net.send_short_data(conn, model_type, msg="model type")
+
     edge_latency_list = get_layers_latency(model, device=device)  # 计算出边缘端的时延参数
+
     cloud_latency_list = net.get_short_data(conn)  # 接受到云端的时延参数
 
     # 获得图中的割集以及dict_node_layer字典

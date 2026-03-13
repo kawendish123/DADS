@@ -134,6 +134,7 @@ def warmUp(model,input_data,device):
     :return: None
     """
     epoch = 10
+    # epoch = 1
     model = model.to(device)
     for i in range(1):
         if device == "cuda":

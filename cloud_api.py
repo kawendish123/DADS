@@ -22,7 +22,7 @@ if __name__ == '__main__':
         sys.exit(2)
 
     # 处理 options中以元组的方式存在(opt,arg)
-    ip,port = "127.0.0.1",8090
+    ip,port = "127.0.0.1",9999
     device = "cpu"
     for opt, arg in opts:
         if opt in ("-i", "--ip"):
@@ -41,10 +41,10 @@ if __name__ == '__main__':
         socket_server = net_utils.get_socket_server(ip, port)
 
         # 开启：带宽监测服务端
-        monitor_ser = MonitorServer(ip=ip)
-        monitor_ser.start()
-        monitor_ser.join()
+        # monitor_ser = MonitorServer(ip=ip)
+        # monitor_ser.start()
+        # monitor_ser.join()
 
         start_server(socket_server,device)
-        monitor_ser.terminate()
+        # monitor_ser.terminate()
 
