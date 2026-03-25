@@ -46,9 +46,9 @@ def algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
     gamma_u = sum(cloud_lats) / min_ft
 
     print("\n>>> [数据诊断] <<<")
-    print(f"边缘端总耗时 sum(Te): {sum(edge_lats):.4f}s")
-    print(f"云端总耗时   sum(Tc): {sum(cloud_lats):.4f}s")
-    print(f"最小传输耗时 min(Ft): {min_ft:.6f}s")
+    print(f"边缘端总耗时 sum(Te): {sum(edge_lats):.4f}ms")
+    print(f"云端总耗时   sum(Tc): {sum(cloud_lats):.4f}ms")
+    print(f"最小传输耗时 min(Ft): {min_ft:.6f}ms")
     print("==========================================\n")
 
     # 搜索参数初始化
@@ -78,7 +78,7 @@ def algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
         # 2. 打印本轮的 final_config (res) 详细内容
         print(f"[迭代 {iteration}] 步长(delta): {delta:.3f}")
         print(f"  当前权重: alpha={res['alpha']:.3f}, gamma={res['gamma']:.3f}")
-        print(f"  --> 当前瓶颈 (T_max): {res['t_max']:.4f}s")
+        print(f"  --> 当前瓶颈 (T_max): {res['t_max']:.4f}ms")
         print("-" * 30)
 
         improvement = t_max_best - res["t_max"]
@@ -99,7 +99,7 @@ def algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
         ]
         iteration += 1
 
-    print(f"DSH 搜索完成! 最优 T_max: {t_max_best:.4f}s")
+    print(f"DSH 搜索完成! 最优 T_max: {t_max_best:.4f}ms")
     print(f"最优 alpha: {final_config['alpha']:.4f}, 最优 gamma: {final_config['gamma']:.4f}")
     print(f"最优 partition: {final_config['partition']}")
     # print(f"最优 dict_node_layer: {final_config['dict_node_layer']}")
@@ -113,7 +113,7 @@ def algorithm_DADS(model, model_input, edge_lats, cloud_lats, bandwidth, Q, net_
     """
     limit_ms = (1.0 / Q) * 1000.0
     print("\n" + "=" * 50)
-    print(f"🚀 启动 DADS 动态调度 | 当前要求帧率 Q={Q} FPS, 瓶颈上限 {limit_ms:.2f}s")
+    print(f"🚀 启动 DADS 动态调度 | 当前要求帧率 Q={Q} FPS, 瓶颈上限 {limit_ms:.2f}ms")
     print("=" * 50)
 
     # 1. 首先假设系统处于轻负载，运行 DSL
@@ -124,7 +124,7 @@ def algorithm_DADS(model, model_input, edge_lats, cloud_lats, bandwidth, Q, net_
 
     # 2. 检查 DSL 方案是否会导致系统拥堵
     if current_max_stage > limit_ms:
-        print(f">>> ⚠️ DSL 瓶颈耗时 {current_max_stage:.4f}s > 限制 {limit_ms:.2f}s，系统将面临拥堵！")
+        print(f">>> ⚠️ DSL 瓶颈耗时 {current_max_stage:.4f}ms > 限制 {limit_ms:.2f}ms，系统将面临拥堵！")
         print(">>> 阶段 2：切换至 DSH (追求最大吞吐量)...")
 
         graph_edges, dict_layer, t_max_dsh = algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
@@ -133,9 +133,9 @@ def algorithm_DADS(model, model_input, edge_lats, cloud_lats, bandwidth, Q, net_
         # 3. 检查即使是 DSH 是否也无能为力
         if t_max_dsh > limit_ms:
             print(
-                f">>> 🚨 严重警告：DSH 最优瓶颈为 {t_max_dsh:.4f}s，依然无法满足 {Q} FPS。建议系统降级帧率 (inform-decrease)！")
+                f">>> 🚨 严重警告：DSH 最优瓶颈为 {t_max_dsh:.4f}ms依然无法满足 {Q} FPS。建议系统降级帧率 (inform-decrease)！")
     else:
-        print(f">>> ✅ DSL 方案满足要求 (最大阶段耗时 {current_max_stage:.4f}s)，采用 DSL 策略。")
+        print(f">>> ✅ DSL 方案满足要求 (最大阶段耗时 {current_max_stage:.4f}ms)，采用 DSL 策略。")
 
     return graph_edges, dict_layer
 

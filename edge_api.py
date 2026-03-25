@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 """
     边缘设备api，用于启动边缘设备，进行前半部分计算后，将中间数据传递给云端设备
     client 启动指令 python edge_api.py -i 47.96.171.184 -p 9999 -d cpu -t easy_net
-    client 启动指令 python edge_api.py -i 127.0.0.1 -p 9999 -d cpu -t easy_net
+    client 启动指令 python edge_api.py -i 127.0.0.1 -p 9999 -d cpu -t swin
 
     "-t", "--type"          模型种类参数 "alex_net" "vgg_net" "easy_net" "inception" "inception_v2"
     "-i", "--ip"            服务端 ip地址

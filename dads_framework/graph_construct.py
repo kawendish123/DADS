@@ -118,6 +118,7 @@ def add_graph_edge(graph, vertex_index, input, layer_index, layer,
     return vertex_index,input
 
 
+
 def get_transmission_latency_list(model, input, bandwidth, net_type="wifi"):
     """
     通过 model, input 和 bandwidth 获取每层传输时延的列表

@@ -7,6 +7,8 @@ from models.VggNet import VggNet
 from models.EasyModel import EasyModel
 from models.InceptionBlock import InceptionBlock
 from models.InceptionBlockV2 import InceptionBlockV2
+from models.SwinT import SwinDADSModel
+from models.LiteHRNet import LiteHRNet
 
 import models.InceptionBlock as Inception
 import models.InceptionBlockV2 as Inception_v2
@@ -32,6 +34,10 @@ def get_dnn_model(arg: str):
         return InceptionBlock(in_channels=input_channels)
     elif arg == "inception_v2":
         return InceptionBlockV2(in_channels=input_channels)
+    elif arg == "swin":
+        return SwinDADSModel(in_channels=input_channels)
+    elif arg == "lite_hrnet":
+        return LiteHRNet(input_channels=input_channels)
     else:
         raise RuntimeError("没有对应的DNN模型")
 

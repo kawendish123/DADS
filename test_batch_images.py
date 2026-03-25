@@ -23,22 +23,28 @@ def preprocess_image(img_path):
     return torch.from_numpy(img).unsqueeze(0)
 
 
-def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device, num_frames=10):
+def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only,cloud_only, num_frames=5):
     print(f"\n{'=' * 20} DADS 论文标准测试启动 {'=' * 20}")
-    print(f"模型: {model_type} | 目标帧率 Q: {Q} | 模拟带宽: {bandwidth} MB/s")
+    # 判断当前运行模式
+    mode_str = "DADS (Dynamic Adaptive)"
+    if edge_only:
+        mode_str = "Edge-Only (纯边缘计算)"
+    elif cloud_only:
+        mode_str = "Cloud-Only (纯云端计算)"
 
-    # ---------------------------------------------------------
-    # 1. 准备 CSV 表格文件
-    # ---------------------------------------------------------
+    print(f"当前策略: {mode_str}")
+    print(f"模型架构: {model_type} | 目标帧率 Q: {Q} FPS | 模拟网络带宽: {bandwidth} MB/s")
+
     # 根据当前实验参数和时间生成唯一的文件名
     current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"dads_result_{model_type}_Q{Q}_B{bandwidth}_{current_time}.csv"
+    csv_filename = f"{model_type}_Q{Q}_B{bandwidth}_{'edge_only' if edge_only else 'cloud_only' if cloud_only else 'dads'}_{current_time}.csv"
 
     # 创建并打开 CSV 文件，写入表头
     with open(csv_filename, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         # 表头：你可以根据毕业论文的需要增加更多列
-        writer.writerow(["Frame ID", "Image Name", "Latency (ms)", "Target Q (FPS)", "Bandwidth (MB/s)"])
+        writer.writerow(["Frame ID", "Image Name", "Latency (ms)",
+                         "edge_latency(ms)","transfer_latency(ms)","cloud_latency(ms) " "Target Q (FPS)", "Bandwidth (MB/s)"])
     # ---------------------------------------------------------
 
     img_names = [f for f in os.listdir(img_dir) if f.endswith(('.jpg', '.png'))][:num_frames]
@@ -57,13 +63,11 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device, num_fram
 
         print(f"\n>>> 处理第 {i + 1}/{num_frames} 帧: {name}")
 
-        t_start = time.time()
-
         # 核心：调用协同推理
-        start_client(ip, port, x, model_type, bandwidth, device, Q=Q)
-
-        t_end = time.time()
-        frame_latency = (t_end - t_start) * 1000  # 转换为毫秒 ms
+        edge_latency,transfer_latency,cloud_latency = start_client(ip, port,
+                                     x, model_type,
+                                     bandwidth, device,Q,edge_only,cloud_only)
+        frame_latency = edge_latency+transfer_latency+cloud_latency
         latencies.append(frame_latency)
 
         # ---------------------------------------------------------
@@ -72,36 +76,29 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device, num_fram
         with open(csv_filename, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             # 写入对应的数据行
-            writer.writerow([i + 1, name, round(frame_latency, 2), Q, bandwidth])
+            writer.writerow([i + 1, name, round(frame_latency, 3),
+                             round(edge_latency, 3),round(transfer_latency, 3),round(cloud_latency, 3), Q, bandwidth])
         # ---------------------------------------------------------
-
-        # 模拟真实帧间隔
-        expected_interval = 1.0 / Q
-        elapsed = t_end - t_start
-        if elapsed < expected_interval:
-            time.sleep(expected_interval - elapsed)
 
     total_run_time = time.time() - start_wall_time
     avg_latency = np.mean(latencies)
-    throughput = len(latencies) / total_run_time
+    actual_throughput = 1000.0 / avg_latency if avg_latency > 0 else 0
 
-    # ---------------------------------------------------------
-    # 3. 将最终的汇总数据也写在表格最下方
-    # ---------------------------------------------------------
+
     with open(csv_filename, mode='a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow([])  # 空一行
         writer.writerow(["--- Summary ---"])
         writer.writerow(["Total Frames", len(latencies)])
         writer.writerow(["Average Latency (ms)", round(avg_latency, 2)])
-        writer.writerow(["Throughput (FPS)", round(throughput, 2)])
+        writer.writerow(["Throughput (FPS)", round(actual_throughput, 3)])
         writer.writerow(["Total Time (s)", round(total_run_time, 2)])
     # ---------------------------------------------------------
 
     print(f"\n{'=' * 20} 测试结果总结 {'=' * 20}")
-    print(f"平均单帧延迟 (Latency): {avg_latency:.2f} ms")
-    print(f"系统吞吐量 (Throughput): {throughput:.2f} FPS")
-    print(f"测试总耗时: {total_run_time:.2f} s")
+    print(f"平均单帧延迟 (Latency): {avg_latency:.3f} ms")
+    print(f"系统吞吐量 (Throughput): {actual_throughput:.3f} FPS")
+    print(f"脚本测试总耗时: {total_run_time:.2f} s")
     print(f"\n✅ 数据已成功保存到表格文件: {csv_filename}")
     print(f"{'=' * 60}")
 
@@ -109,10 +106,20 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device, num_fram
 if __name__ == '__main__':
     run_batch_test(
         img_dir="./datasets/bdd100k/images/100k/apple",
-        model_type="vgg_net",
+        model_type="lite_hrnet",
         ip="127.0.0.1",
         port=9999,
-        bandwidth=1.1,  # 模拟 3G 网络
-        Q=20.0,  # 设置为高负载
-        device="cpu"
+        bandwidth=1000,
+        Q=10,
+        device="cpu",
+
+        #纯边缘设备
+        # edge_only=True,
+        # cloud_only=False
+        # #纯云设备
+        edge_only=False,
+        cloud_only=True
+        # dads
+        # edge_only=False,
+        # cloud_only=False
     )

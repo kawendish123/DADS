@@ -56,7 +56,8 @@ def start_server(socket_server, device):
     print("================= DNN Collaborative Inference Finished. ===================")
 
 
-def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=50):
+def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q,
+                 edge_only=False,cloud_only=False):
     """
     启动一个client客户端 向server端发起推理请求
     一般仅在 edge_api.py 中直接调用
@@ -72,31 +73,31 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=50):
     model = inference_utils.get_dnn_model(model_type)
     # 和云端建立连接
     conn = net.get_socket_client(ip, port)
-
+    layer_num = len(model)
     # 发送一个数据请求云端的各层推理时延
-
-
     net.send_short_data(conn, model_type, msg="model type")
-
     edge_latency_list = get_layers_latency(model, device=device)  # 计算出边缘端的时延参数
-
     cloud_latency_list = net.get_short_data(conn)  # 接受到云端的时延参数
 
-    # 获得图中的割集以及dict_node_layer字典
-    # graph_partition_edge, dict_node_layer = algorithm_DSL(model, input_x,
-    #                                                       edge_latency_list, cloud_latency_list,
-    #                                                       bandwidth=upload_bandwidth)
-    # graph_partition_edge, dict_node_layer = algorithm_DSL(model, input_x,
-    #                                                       edge_latency_list, cloud_latency_list,
-    #                                                       bandwidth=0.2)
-    graph_partition_edge, dict_node_layer = algorithm_DADS(model, input_x,
-                                                          edge_latency_list, cloud_latency_list,
-                                                          bandwidth=11,Q=Q)
+    if edge_only:
+        print("\n>>> 强行切分：纯边缘设备计算模式 (Edge-Only)")
+        # 切分点在最后一层之后，意味着模型全部留在边缘端
+        model_partition_edge = []
 
+    elif cloud_only:
+        print("\n>>> 强行切分：纯云端设备计算模式 (Cloud-Only)")
+        # 切分点在第0层，意味着边缘端为空，直接传输原始 Input
+        model_partition_edge = [(0, 1)]
 
-    # 获得在DNN模型哪层之后划分
-    model_partition_edge = get_partition_points(graph_partition_edge, dict_node_layer)
+    else:
+        print("\n>>> 动态切分：DADS 端云协同优化模式")
+        graph_partition_edge, dict_node_layer = algorithm_DADS(
+            model, input_x, edge_latency_list, cloud_latency_list,
+            bandwidth=upload_bandwidth, Q=Q
+        )
+        model_partition_edge = get_partition_points(graph_partition_edge, dict_node_layer)
     print(f"partition edges : {model_partition_edge}")
+
 
     # 发送划分点
     net.send_short_data(conn, model_partition_edge, msg="partition strategy")
@@ -124,8 +125,10 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q=50):
 
     cloud_latency = net.get_short_data(conn)
     print(f"{model_type} 在云端设备上推理完成 - {cloud_latency:.3f} ms")
-
-    print("================= DNN Collaborative Inference Finished. ===================")
+    actual_t_total = edge_latency + transfer_latency + cloud_latency
+    print(
+        f"================= 总耗时 T_total: {actual_t_total:.3f} ms =================")
     conn.close()
+    return edge_latency,transfer_latency,cloud_latency
 
 
