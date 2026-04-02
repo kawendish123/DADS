@@ -119,23 +119,23 @@ def algorithm_DADS(model, model_input, edge_lats, cloud_lats, bandwidth, Q, net_
     # 1. 首先假设系统处于轻负载，运行 DSL
     print(">>> 阶段 1：尝试 DSL (追求最低总延迟)...")
     graph_edges, dict_layer, te, tt, tc = algorithm_DSL(model, model_input, edge_lats, cloud_lats, bandwidth, net_type)
-    current_max_stage = max(te, tt, tc)
-
-
-    # 2. 检查 DSL 方案是否会导致系统拥堵
-    if current_max_stage > limit_ms:
-        print(f">>> ⚠️ DSL 瓶颈耗时 {current_max_stage:.4f}ms > 限制 {limit_ms:.2f}ms，系统将面临拥堵！")
-        print(">>> 阶段 2：切换至 DSH (追求最大吞吐量)...")
-
-        graph_edges, dict_layer, t_max_dsh = algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
-                                                           net_type)
-
-        # 3. 检查即使是 DSH 是否也无能为力
-        if t_max_dsh > limit_ms:
-            print(
-                f">>> 🚨 严重警告：DSH 最优瓶颈为 {t_max_dsh:.4f}ms依然无法满足 {Q} FPS。建议系统降级帧率 (inform-decrease)！")
-    else:
-        print(f">>> ✅ DSL 方案满足要求 (最大阶段耗时 {current_max_stage:.4f}ms)，采用 DSL 策略。")
+    # current_max_stage = max(te, tt, tc)
+    #
+    #
+    # # 2. 检查 DSL 方案是否会导致系统拥堵
+    # if current_max_stage > limit_ms:
+    #     print(f">>> ⚠️ DSL 瓶颈耗时 {current_max_stage:.4f}ms > 限制 {limit_ms:.2f}ms，系统将面临拥堵！")
+    #     print(">>> 阶段 2：切换至 DSH (追求最大吞吐量)...")
+    #
+    #     graph_edges, dict_layer, t_max_dsh = algorithm_DSH(model, model_input, edge_lats, cloud_lats, bandwidth,
+    #                                                        net_type)
+    #
+    #     # 3. 检查即使是 DSH 是否也无能为力
+    #     if t_max_dsh > limit_ms:
+    #         print(
+    #             f">>> 🚨 严重警告：DSH 最优瓶颈为 {t_max_dsh:.4f}ms依然无法满足 {Q} FPS。建议系统降级帧率 (inform-decrease)！")
+    # else:
+    #     print(f">>> ✅ DSL 方案满足要求 (最大阶段耗时 {current_max_stage:.4f}ms)，采用 DSL 策略。")
 
     return graph_edges, dict_layer
 

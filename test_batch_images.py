@@ -5,8 +5,10 @@ import numpy as np
 import time
 import csv  # 引入 csv 模块
 from datetime import datetime
-from server_func import start_client
 
+from net.monitor_client import MonitorClient
+from server_func import start_client
+import multiprocessing
 
 
 def preprocess_image(img_path):
@@ -30,6 +32,15 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only
         mode_str = "Edge-Only (纯边缘计算)"
     elif cloud_only:
         mode_str = "Cloud-Only (纯云端计算)"
+
+    # bandwidth_value = multiprocessing.Value('d', 0.0)
+    # monitor_cli = MonitorClient(ip=ip, bandwidth_value=bandwidth_value)
+    # monitor_cli.start()
+    #
+    # # 等待子进程结束后获取到带宽数据
+    # monitor_cli.join()
+    # print(f"get bandwidth value : {bandwidth_value.value} MB/s")
+
 
     print(f"当前策略: {mode_str}")
     print(f"模型架构: {model_type} | 目标帧率 Q: {Q} FPS | 模拟网络带宽: {bandwidth} MB/s")
@@ -106,17 +117,20 @@ if __name__ == '__main__':
         model_type="hrnet",
         ip="connect.westd.seetacloud.com",
         port=48672,
-        bandwidth=1000,
+        # ip="127.0.0.1",
+        # port=9999,
+        bandwidth=18.8,
         Q=10,
         device="cpu",
 
         #纯边缘设备
-        edge_only=True,
-        cloud_only=False
+        # edge_only=True,
+        # cloud_only=False
         # #纯云设备
         # edge_only=False,
         # cloud_only=True
+
         # dads
-        # edge_only=False,
-        # cloud_only=False
+        edge_only=False,
+        cloud_only=False
     )
