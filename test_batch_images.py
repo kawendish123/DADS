@@ -98,12 +98,14 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only
     print(f"\n✅ 数据已成功保存到表格文件: {csv_filename}")
     print(f"{'=' * 60}")
 
+
+# connect.westd.seetacloud.com:48672
 if __name__ == '__main__':
     run_batch_test(
         img_dir="./datasets/bdd100k/images/100k/apple",
         model_type="hrnet",
-        ip="127.0.0.1",
-        port=9999,
+        ip="connect.westd.seetacloud.com",
+        port=48672,
         bandwidth=1000,
         Q=10,
         device="cpu",
