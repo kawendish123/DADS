@@ -53,7 +53,7 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only
     with open(csv_filename, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(["Frame ID", "Image Name", "Latency (ms)",
-                         "edge_latency(ms)","transfer_latency(ms)","cloud_latency(ms) " "Target Q (FPS)", "Bandwidth (MB/s)"])
+                         "edge_latency(ms)","transfer_latency(ms)","cloud_latency(ms) " ,"Target Q (FPS)", "Bandwidth (MB/s)"])
     # ---------------------------------------------------------
 
     img_names = [f for f in os.listdir(img_dir) if f.endswith(('.jpg', '.png'))][:num_frames]
@@ -115,15 +115,15 @@ if __name__ == '__main__':
     run_batch_test(
         img_dir="./datasets/bdd100k/images/100k/apple",
         model_type="hrnet",
-        ip="connect.westd.seetacloud.com",
-        port=48672,
-        # ip="127.0.0.1",
-        # port=9999,
-        bandwidth=18.8,
+        # ip="connect.westd.seetacloud.com",
+        # port=48672,
+        ip="127.0.0.1",
+        port=9999,
+        bandwidth=1.1,
         Q=10,
         device="cpu",
 
-        #纯边缘设备
+        # #纯边缘设备
         # edge_only=True,
         # cloud_only=False
         # #纯云设备

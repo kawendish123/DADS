@@ -4,7 +4,8 @@ from dads_framework.graph_construct import get_layers_latency
 import net.net_utils as net
 import torch
 import torch.nn as nn
-
+import pickle
+from net.net_utils import get_speed
 
 class HRNet_EdgeModel(nn.Module):
     """边缘端动态执行引擎"""
@@ -148,7 +149,7 @@ def start_server(socket_server, device):
     # 接收模型分层点
     model_partition_edge = net.get_short_data(conn)
     print(f"get partition point successfully.")
-
+    conn.sendall("ok".encode())
     # 获取划分后的边缘端模型和云端模型
     # _, cloud_model = inference_utils.model_partition(model, model_partition_edge)
     # cloud_model = cloud_model.to(device)
@@ -263,7 +264,7 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q,
 
     # 发送划分点
     net.send_short_data(conn, model_partition_edge, msg="partition strategy")
-
+    conn.recv(40)
     # 获取划分后的边缘端模型和云端模型
     # edge_model, _ = inference_utils.model_partition(model, model_partition_edge)
     # edge_model = edge_model.to(device)
@@ -274,15 +275,39 @@ def start_client(ip, port, input_x, model_type, upload_bandwidth, device,Q,
     edge_output, edge_latency = inference_utils.recordTime(edge_model, input_x, device, epoch_cpu=30, epoch_gpu=100)
     print(f"{model_type} 在边缘端设备上推理完成 - {edge_latency:.3f} ms")
 
-    # 发送中间数据
+    # # 发送中间数据
+    # net.send_data(conn, edge_output, "edge output")
+    #
+    # # 避免连续接收两个消息 防止消息粘包
+    # conn.sendall("avoid  sticky".encode())
+    #
+    # transfer_latency = net.get_short_data(conn)
+    # print(f"{model_type} 传输完成 - {transfer_latency:.3f} ms")
+
+    edge_output_bytes = pickle.dumps(edge_output)
+    data_size = len(edge_output_bytes)
+
+    # 2. 根据你设定的带宽，获取传输速度 (Bytes/ms)
+    speed_Bpms = get_speed("wifi", upload_bandwidth)
+
+    # 3. 计算理论传输时延 (毫秒)
+    simulated_transfer_latency = data_size / speed_Bpms
+
+    # ==========================================================
+    # 依然执行真实的物理发送（保持 Server 端能收到数据继续计算）
     net.send_data(conn, edge_output, "edge output")
 
     # 避免连续接收两个消息 防止消息粘包
     conn.sendall("avoid  sticky".encode())
 
-    transfer_latency = net.get_short_data(conn)
-    print(f"{model_type} 传输完成 - {transfer_latency:.3f} ms")
+    # 接收服务端返回的“物理极速时延”，但我们只做记录，不参与最终计算
+    physical_latency = net.get_short_data(conn)
 
+    # 4. 强制覆盖！使用我们计算出的模拟时延作为论文数据！
+    transfer_latency = simulated_transfer_latency
+    print(f"📦 包裹大小: {data_size / 1024 / 1024:.3f} MB")
+    print(f"🚀 模拟设定带宽: {upload_bandwidth} MB/s")
+    print(f"⏱️ {model_type} 模拟传输完成 - 耗时: {transfer_latency:.3f} ms (本地物理耗时仅: {physical_latency:.3f} ms)")
     # 避免连续接收两个消息 防止消息粘包
     conn.sendall("avoid  sticky".encode())
 
