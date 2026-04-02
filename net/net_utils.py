@@ -82,11 +82,11 @@ def send_data(conn, x, msg="msg", show=True):
     """
     send_x = pickle.dumps(x)
     conn.sendall(pickle.dumps(len(send_x)))
-    resp_len = conn.recv(1024).decode()
+    resp_len = conn.recv(65536).decode()
 
 
     conn.sendall(send_x)
-    resp_data = conn.recv(1024).decode()
+    resp_data = conn.recv(65536).decode()
     if show:
         print(f"get {resp_data} , {msg} has been sent successfully")  # 表示对面已收到数据
 
@@ -108,7 +108,7 @@ def get_data(conn):
     :return: 解析后的数据 和 获取数据消耗的时延
     """
     # 接收数据长度
-    data_len = pickle.loads(conn.recv(1024))
+    data_len = pickle.loads(conn.recv(65536))
     conn.sendall("yes len".encode())
 
     # 接收数据并记录时延
@@ -133,7 +133,7 @@ def get_data(conn):
 
 def get_short_data(conn):
     """ 获取短数据"""
-    return pickle.loads(conn.recv(1024))
+    return pickle.loads(conn.recv(65536))
 
 
 def get_bandwidth():

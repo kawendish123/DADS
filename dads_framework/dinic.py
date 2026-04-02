@@ -74,7 +74,7 @@ def dfs_once(residual_graph,level_dict,dfs_start_node,augment_value):
         return augment_value
 
     for node in residual_graph.nodes():  # 遍历图中所有顶点
-        if level_dict[dfs_start_node] + 1 == level_dict[node]:  # 找到下一层次的节点
+        if node in level_dict and level_dict[dfs_start_node] + 1 == level_dict[node]:  # 找到下一层次的节点
             if residual_graph.has_edge(dfs_start_node,node) and residual_graph.get_edge_data(dfs_start_node, node)["capacity"] > 0:  # capacity = 0 表示已经没有容量了 可以不通过这个路径
                 capacity = residual_graph.get_edge_data(dfs_start_node, node)["capacity"]
                 # print(f"{dfs_start_node} -> {node} : {capacity}")

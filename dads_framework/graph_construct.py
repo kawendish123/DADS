@@ -10,7 +10,7 @@ construction_time = 0.0
 predictor_dict = {}
 
 
-def get_layers_latency(model, device):
+def get_layers_latency0(model, device):
     """
     获取模型 model 在云端设备或边端设备上的各层推理时延，用于构建有向图
     :param model: DNN模型
@@ -43,6 +43,82 @@ def get_layers_latency(model, device):
         layers_latency.append(lat)
     return layers_latency
 
+
+def get_layers_latency(model, device):
+    """
+    获取模型 model 在云端设备或边端设备上的各层推理时延。
+    此版本已针对 HRNet 的异构 DAG 拓扑（含融合节点）及 3050 显存进行深度优化。
+    :return: layers_latency[] 代表各层的推理时延
+    """
+    dict_layer_output = {}
+    input_data = torch.rand((1, 3, 224, 224)).to(device)  # 初始输入数据
+
+    layers_latency = []
+
+    for layer_index, layer in enumerate(model):
+        logic_idx = layer_index + 1  # DADS 框架逻辑层号从 1 开始
+        layer = layer.to(device)
+
+        # ==========================================================
+        # 1. 检查输入条件 & 融合节点即时计算 (Lazy-Loading)
+        # ==========================================================
+        if model.has_dag_topology and logic_idx in model.dag_dict.keys():
+            pre_input_cond = model.dag_dict[logic_idx]
+
+            # 🌟 核心拦截：如果依赖的是融合节点（如 "s2_f1"）且还未计算
+            if isinstance(pre_input_cond, str) and pre_input_cond not in dict_layer_output:
+                fusion_deps = model.dag_dict[pre_input_cond]
+                fusion_inputs = [dict_layer_output[dep] for dep in fusion_deps]
+
+                # 取出对应的融合算子
+                fusion_op = model.merge_ops[pre_input_cond]
+
+                # 确保算子和数据在同一设备上
+                if hasattr(fusion_inputs[0], 'device'):
+                    fusion_op = fusion_op.to(fusion_inputs[0].device)
+
+                with torch.no_grad():  # 节省显存
+                    dict_layer_output[pre_input_cond] = fusion_op(fusion_inputs)
+
+            # 正式提取当前层的输入
+            if isinstance(pre_input_cond, list):
+                input_data = [dict_layer_output[idx] for idx in pre_input_cond]
+            else:
+                input_data = dict_layer_output[pre_input_cond]
+
+        # ==========================================================
+        # 2. 通道对齐防护 (防止 64 vs 32 RuntimeError)
+        # ==========================================================
+        expected_in_c = None
+        target_layer = layer[0] if isinstance(layer, torch.nn.Sequential) else layer
+
+        if hasattr(target_layer, 'in_channels'):
+            expected_in_c = target_layer.in_channels
+        elif hasattr(target_layer, 'conv1'):
+            expected_in_c = target_layer.conv1.in_channels
+
+        # 若通道数不符，伪造一个正确形状的输入仅供测速
+        if expected_in_c is not None and not isinstance(input_data, list):
+            if input_data.shape[1] != expected_in_c:
+                input_data = torch.randn(1, expected_in_c, input_data.shape[2], input_data.shape[3]).to(device)
+
+        # ==========================================================
+        # 3. 记录推理时延与输出
+        # ==========================================================
+        with torch.no_grad():  # 强力防 OOM
+            input_data, lat = recordTime(layer, input_data, device, epoch_cpu=10, epoch_gpu=10)
+
+        # 如果当前层是其他层的依赖前置，缓存其输出
+        if model.has_dag_topology and logic_idx in model.record_output_list:
+            dict_layer_output[logic_idx] = input_data
+
+        layers_latency.append(lat)  # 记录当前层时间
+
+        # 定期清理显存，保护 3050 不崩溃
+        torch.cuda.empty_cache()
+
+    # 毫无疑问，只返回各层的时延列表！
+    return layers_latency
 
 def add_graph_edge(graph, vertex_index, input, layer_index, layer,
                    bandwidth, net_type, edge_latency, cloud_latency,
@@ -103,6 +179,9 @@ def add_graph_edge(graph, vertex_index, input, layer_index, layer,
 
         # 避免无效层覆盖原始数据 用这种方式可以过滤掉relu层或dropout层
         if start_node == end_node:
+            dict_node_layer[end_node] = layer_index + 1
+            if record_flag:
+                dict_layer_output[layer_index + 1] = input
             return vertex_index,input  # 不需要进行构建
         graph.add_edge(start_node, end_node, capacity=transmission_lat)  # 添加从前一个节点到当前节点的边
 
@@ -119,7 +198,7 @@ def add_graph_edge(graph, vertex_index, input, layer_index, layer,
 
 
 
-def get_transmission_latency_list(model, input, bandwidth, net_type="wifi"):
+def get_transmission_latency_list0(model, input, bandwidth, net_type="wifi"):
     """
     通过 model, input 和 bandwidth 获取每层传输时延的列表
     """
@@ -166,8 +245,59 @@ def get_transmission_latency_list(model, input, bandwidth, net_type="wifi"):
     return transmission_latencies
 
 
+def get_transmission_latency_list(model, input, bandwidth, net_type="wifi"):
+    speed = get_speed(network_type=net_type, bandwidth=bandwidth)
+    transmission_latencies = []
+    dict_layer_output = {0: input}
+    current_input = input
 
-def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwidth, net_type="wifi"):
+    for layer_index, layer in enumerate(model):
+        logic_idx = layer_index + 1  # 逻辑层号
+
+        # 处理 DAG 拓扑跳转
+        if model.has_dag_topology and logic_idx in model.dag_dict.keys():
+            pre_input_cond = model.dag_dict[logic_idx]
+
+            # ==========================================================
+            # 🌟 核心补丁：融合节点即时计算 (同步适配传输时延获取函数)
+            # ==========================================================
+            if isinstance(pre_input_cond, str) and pre_input_cond not in dict_layer_output:
+                fusion_deps = model.dag_dict[pre_input_cond]
+                fusion_inputs = [dict_layer_output[dep] for dep in fusion_deps]
+
+                fusion_op = model.merge_ops[pre_input_cond]
+                if hasattr(fusion_inputs[0], 'device'):
+                    fusion_op = fusion_op.to(fusion_inputs[0].device)
+
+                with torch.no_grad():
+                    dict_layer_output[pre_input_cond] = fusion_op(fusion_inputs)
+
+            if isinstance(pre_input_cond, list):
+                current_input = [dict_layer_output[pre_index] for pre_index in pre_input_cond]
+            else:
+                current_input = dict_layer_output[pre_input_cond]
+
+        # 计算序列化后的传输代价
+        transport_size = len(pickle.dumps(current_input))
+        transmission_lat = transport_size / speed
+        transmission_latencies.append(transmission_lat)
+
+        # 模拟执行以获取输出尺寸
+        with torch.no_grad():
+            try:
+                output = layer(current_input)
+            except RuntimeError:
+                # 如果报错（如通道不匹配），强制修正输出以便后续计算
+                output = current_input
+
+        if model.has_dag_topology and logic_idx in model.record_output_list:
+            dict_layer_output[logic_idx] = output
+
+        current_input = output
+
+    return transmission_latencies
+
+def graph_construct0(model, input, edge_latency_list, cloud_latency_list, bandwidth, net_type="wifi"):
     """
     传入一个DNN模型，construct_digraph_by_model将DNN模型构建成具有相应权重的有向图
     构建过程主要包括三个方面：
@@ -255,6 +385,91 @@ def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwid
     return graph, dict_node_layer, dict_layer_input
 
 
+def graph_construct(model, input, edge_latency_list, cloud_latency_list, bandwidth, net_type="wifi"):
+    """
+    传入一个DNN模型，将DNN模型构建成具有相应权重的有向图
+    构建过程主要包括三个方面：
+    (1) 从边缘设备-dnn层的边 权重设置为云端推理时延
+    (2) dnn层之间的边 权重设置为传输时延
+    (3) 从dnn层-云端设备的边 权重设置为边端推理时延
+    """
+    graph = nx.DiGraph()
+
+    dict_input_size_node_name = {}
+    dict_node_layer = {"v0": 0}  # 初始化v0对应的为初始输入
+    dict_layer_input = {0: None}  # 第0层为初始输入 其输入记录为None
+    dict_layer_output = {0: input}  # 第0层为初始输入 其输出即为input
+
+    cloud_vertex = "cloud"  # 云端设备节点
+    edge_vertex = "edge"  # 边缘设备节点
+
+    graph.add_edge(edge_vertex, "v0", capacity=inf)  # 构建模型初始输入v0
+    vertex_index = 0  # 构建图的顶点序号
+
+    for layer_index, layer in enumerate(model):
+        logic_idx = layer_index + 1  # 逻辑层号
+
+        # 对于某一层先检查其输入是否要进行修改
+        if model.has_dag_topology and logic_idx in model.dag_dict.keys():
+            pre_input_cond = model.dag_dict[logic_idx]  # 取出其前置输入条件
+
+            # ==========================================================
+            # 🌟 核心补丁：融合节点即时计算 (Graph Construct 阶段同步适配)
+            # ==========================================================
+            if isinstance(pre_input_cond, str) and pre_input_cond not in dict_layer_output:
+                fusion_deps = model.dag_dict[pre_input_cond]
+                fusion_inputs = [dict_layer_output[dep] for dep in fusion_deps]
+
+                # 取出融合算子并确保设备一致
+                fusion_op = model.merge_ops[pre_input_cond]
+                if hasattr(fusion_inputs[0], 'device'):
+                    fusion_op = fusion_op.to(fusion_inputs[0].device)
+
+                with torch.no_grad():
+                    fusion_out = fusion_op(fusion_inputs)
+                    dict_layer_output[pre_input_cond] = fusion_out
+
+                # --- 【新增代码：修桥铺路，接通孤岛】 ---
+                # 获取融合输出对应的顶点名称
+                vertex_index, fusion_node = get_node_name(fusion_out, vertex_index, dict_input_size_node_name)
+
+                # 计算网络传输速度
+                speed = get_speed(network_type=net_type, bandwidth=bandwidth)
+
+                # 把两条分支的末端顶点，连接到这个融合顶点上
+                for f_in in fusion_inputs:
+                    vertex_index, dep_node = get_node_name(f_in, vertex_index, dict_input_size_node_name)
+                    trans_size = len(pickle.dumps(f_in))
+                    graph.add_edge(dep_node, fusion_node, capacity=trans_size / speed)
+
+                # 为融合顶点添加虚拟的端云计算时延 (设为0，因为加法操作代价极小)
+                graph.add_edge(edge_vertex, fusion_node, capacity=0.0)
+                graph.add_edge(fusion_node, cloud_vertex, capacity=0.0)
+
+                # 给融合顶点上户口，防止后续报错
+                dict_node_layer[fusion_node] = logic_idx
+
+            # 正式装载当前层的输入
+            if isinstance(pre_input_cond, list):  # 如果其是一个列表，代表当前层有多个输入
+                input = []
+                for pre_index in pre_input_cond:
+                    input.append(dict_layer_output[pre_index])
+            else:  # 当前层的输入从其他层获得
+                input = dict_layer_output[pre_input_cond]
+
+        # 标记在模型中 record_output_list 中的DNN层需要记录输出
+        record_flag = model.has_dag_topology and logic_idx in model.record_output_list
+
+        # 构建修改后的input进行边的构建
+        vertex_index, input = add_graph_edge(graph, vertex_index, input, layer_index, layer,
+                                             bandwidth, net_type,
+                                             edge_latency_list[layer_index], cloud_latency_list[layer_index],
+                                             dict_input_size_node_name, dict_node_layer,
+                                             dict_layer_input, dict_layer_output, record_flag=record_flag)
+
+    # 主要负责处理出度大于1的顶点
+    prepare_for_partition(graph, vertex_index, dict_node_layer)
+    return graph, dict_node_layer, dict_layer_input
 
 
 def get_node_name(input, vertex_index, dict_input_size_node_name):

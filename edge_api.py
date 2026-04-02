@@ -4,8 +4,7 @@ from server_func import start_client
 from net.monitor_client import MonitorClient
 import multiprocessing
 
-import warnings
-warnings.filterwarnings("ignore")
+
 
 
 """

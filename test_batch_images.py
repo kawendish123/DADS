@@ -6,9 +6,7 @@ import time
 import csv  # 引入 csv 模块
 from datetime import datetime
 from server_func import start_client
-import warnings
 
-warnings.filterwarnings("ignore")
 
 
 def preprocess_image(img_path):
@@ -16,7 +14,8 @@ def preprocess_image(img_path):
     img = cv2.imread(img_path)
     if img is None:
         return None
-    img = cv2.resize(img, (224, 224))
+    img = cv2.resize(img, (256, 192))
+    # img = cv2.resize(img, (224, 224))
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = img.astype(np.float32) / 255.0
     img = np.transpose(img, (2, 0, 1))
@@ -42,7 +41,6 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only
     # 创建并打开 CSV 文件，写入表头
     with open(csv_filename, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        # 表头：你可以根据毕业论文的需要增加更多列
         writer.writerow(["Frame ID", "Image Name", "Latency (ms)",
                          "edge_latency(ms)","transfer_latency(ms)","cloud_latency(ms) " "Target Q (FPS)", "Bandwidth (MB/s)"])
     # ---------------------------------------------------------
@@ -70,9 +68,7 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only
         frame_latency = edge_latency+transfer_latency+cloud_latency
         latencies.append(frame_latency)
 
-        # ---------------------------------------------------------
-        # 2. 将当前帧的结果实时追加到表格中
-        # ---------------------------------------------------------
+
         with open(csv_filename, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             # 写入对应的数据行
@@ -102,11 +98,10 @@ def run_batch_test(img_dir, model_type, ip, port, bandwidth, Q, device,edge_only
     print(f"\n✅ 数据已成功保存到表格文件: {csv_filename}")
     print(f"{'=' * 60}")
 
-
 if __name__ == '__main__':
     run_batch_test(
         img_dir="./datasets/bdd100k/images/100k/apple",
-        model_type="lite_hrnet",
+        model_type="hrnet",
         ip="127.0.0.1",
         port=9999,
         bandwidth=1000,
@@ -114,11 +109,11 @@ if __name__ == '__main__':
         device="cpu",
 
         #纯边缘设备
-        # edge_only=True,
-        # cloud_only=False
+        edge_only=True,
+        cloud_only=False
         # #纯云设备
-        edge_only=False,
-        cloud_only=True
+        # edge_only=False,
+        # cloud_only=True
         # dads
         # edge_only=False,
         # cloud_only=False

@@ -2,17 +2,11 @@ import torch
 import torch.nn as nn
 import time
 
-from models.AlexNet import AlexNet
-from models.VggNet import VggNet
-from models.EasyModel import EasyModel
-from models.InceptionBlock import InceptionBlock
-from models.InceptionBlockV2 import InceptionBlockV2
 from models.SwinT import SwinDADSModel
-from models.LiteHRNet import LiteHRNet
-
 import models.InceptionBlock as Inception
 import models.InceptionBlockV2 as Inception_v2
-import models.EasyModel as Easynet
+from models.hrnet import HighResolutionNet
+from models.hrnet_dag import HRNet_DAG
 
 from utils.excel_utils import *
 
@@ -24,20 +18,10 @@ def get_dnn_model(arg: str):
     :return: 对应的名字
     """
     input_channels = 3
-    if arg == "alex_net":
-        return AlexNet(input_channels=input_channels)
-    elif arg == "vgg_net":
-        return VggNet(input_channels=input_channels)
-    elif arg == "easy_net":
-        return EasyModel(in_channels=input_channels)
-    elif arg == "inception":
-        return InceptionBlock(in_channels=input_channels)
-    elif arg == "inception_v2":
-        return InceptionBlockV2(in_channels=input_channels)
-    elif arg == "swin":
+    if arg == "swin":
         return SwinDADSModel(in_channels=input_channels)
-    elif arg == "lite_hrnet":
-        return LiteHRNet(input_channels=input_channels)
+    elif arg == "hrnet":
+        return HRNet_DAG(base_channel=32, num_joints=17)
     else:
         raise RuntimeError("没有对应的DNN模型")
 
@@ -61,6 +45,8 @@ def show_model_constructor(model,skip=True):
     else:
         print("this model is a empty model")
 
+if __name__ == '__main__':
+    show_model_constructor(get_dnn_model("hrnet"))
 
 
 def show_features(model, input_data, device, epoch_cpu=50, epoch_gpu=100, skip=True, save=False, sheet_name="model", path=None):
@@ -271,8 +257,7 @@ def model_partition(model, model_partition_edge):
         return Inception.construct_edge_cloud_inception_block(model, model_partition_edge)
     if isinstance(model, Inception_v2.InceptionBlockV2):
         return Inception_v2.construct_edge_cloud_inception_block(model, model_partition_edge)
-    if isinstance(model, Easynet.EasyModel):
-        return Easynet.construct_edge_cloud_inception_block(model,model_partition_edge)
+
 
     if len(model_partition_edge) == 1:  # 使用链式结构的划分
         partition_point = model_partition_edge[0][0]
